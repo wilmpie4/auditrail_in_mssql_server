@@ -1,0 +1,243 @@
+-- create prototype database
+create database Prototype_Sheep
+use Prototype_Sheep
+
+--create audit part of the database
+create schema sc_audit
+
+drop table if exists sc_audit.audit_table
+create table sc_audit.audit_table
+( audit_id int not null identity(1,1) primary key
+ ,changed_date datetime
+ ,username varchar(255)
+ ,change_type varchar(255)
+ ,table_name varchar(255)
+ ,column_name varchar(255)
+ ,old_value varchar(255)
+ ,new_value varchar(255)
+)
+
+-- create employee schema
+create schema sc_employee
+
+drop table if exists sc_employee.employee
+create table sc_employee.employee
+( id_employee int not null identity(1,1) primary key
+ ,emp_number int
+ ,emp_role int not null foreign key references sc_employee.employee_role(id_role)
+ ,emp_firstname varchar(255)
+ ,emp_lastname varchar(255)
+ ,emp_phone_number int
+ ,emp_postalcode varchar(6)
+ ,emp_house_number varchar(255)
+ )
+
+drop table if exists sc_employee.employee_role
+create table sc_employee.employee_role
+( id_role int not null identity(1,1) primary key
+ ,role_description varchar(255)
+ ,role_rights int
+ )
+
+
+ -- gernerating data for sc_employee.employee_role
+ delete from sc_employee.employee_role
+ insert into sc_employee.employee_role(role_description, role_rights)
+ values ('Administrator', 1)
+	   ,('Manager', 2)
+	   ,('Engineer', 3)
+
+select * from sc_employee.employee_role
+
+ -- generating data for sc_employee.employee
+ insert into sc_employee.employee (emp_number, emp_role, emp_firstname, emp_lastname, emp_phone_number, emp_postalcode, emp_house_number)
+ values (1000, 6, 'Wanda' , 'Maximoff', 612679800, '5383KK', '7')
+	   ,(1001, 4, 'Tony', 'Montana', 612679801, '3000CM', '5B')
+	   ,(1002, 5, 'Jason', 'Bourne', 612679802, '5342CK', '4A')
+	   ,(1003, 5, 'Bruce', 'Banner', 612679803, '6654DL', '12' )
+
+
+select * from sc_employee.employee as emp
+		 inner join sc_employee.employee_role as emp_role on emp_role.id_role = emp.emp_role
+
+-- update statement
+update sc_employee.employee_role
+set role_description = 'IT Manager'
+where id_role = 5
+
+update sc_employee.employee_role
+set role_description = 'Manager'
+where id_role = 5
+
+-- insert statement
+ insert into sc_employee.employee (emp_number, emp_role, emp_firstname, emp_lastname, emp_phone_number, emp_postalcode, emp_house_number)
+ values (1004, 6, 'Steven' , 'Rogers', 612679804, '5836dd', '23')
+select * from sc_employee.employee
+
+-- update statement
+update sc_employee.employee
+set emp_firstname = 'Dave'
+where emp_number = 1004
+select * from sc_employee.employee
+
+-- delete statement
+delete from sc_employee.employee 
+where emp_number = 1004
+select * from sc_employee.employee
+
+-- selecting from audit_table
+select * from sc_audit.audit_table
+delete from sc_audit.audit_table
+
+-- create insert trigger
+drop trigger if exists sc_employee.tr_employee_insert
+create trigger tr_employee_insert
+on sc_employee.employee
+after insert
+as 
+begin
+--------------------------------------------------------------------------------------------
+Declare @column_name varchar(255)
+Declare @sql varchar(1000)
+Declare @new_value varchar(255) 
+Declare Inserted_2 Cursor for(SELECT   c.Name
+								  FROM  sys.columns c 
+								  INNER JOIN  sys.objects o ON o.object_id = c.object_id 
+								  WHERE  o.Name = 'Employee'
+								  AND o.type = 'U')
+Open Inserted_2
+Fetch next from Inserted_2 into @column_name
+While @@FETCH_STATUS = 0
+Begin	
+
+		insert into sc_audit.audit_table (changed_date, username, change_type,table_name, column_name, new_value)
+		values ((select CURRENT_TIMESTAMP), (select SYSTEM_USER), 'Inserted', 'sc_employee.employee', @column_name, ('zz_Q99999'))
+		
+		
+		select * into #temptable from inserted
+		set @sql = 'select convert(varchar(255), #temptable.'+ @column_name + ') as column_in into #temptable2 from #temptable
+		
+					update sc_audit.audit_table
+					set new_value = (select column_in from #temptable2)
+					where new_value = ''zz_Q99999''
+					drop table #temptable2'
+		exec(@sql)
+
+		Fetch next from Inserted_2 into @column_name
+	
+		drop table #temptable
+
+End
+
+Close Inserted_2
+DEALLOCATE Inserted_2 
+--------------------------------------------------------------------------------------------
+end 
+
+-- create delete trigger
+drop trigger if exists sc_employee.tr_employee_delete
+create trigger tr_employee_delete
+on sc_employee.employee
+after delete
+as 
+begin
+--------------------------------------------------------------------------------------------
+Declare @column_name varchar(255)
+Declare @sql varchar(1000)
+Declare @new_value varchar(255) 
+Declare Deleted_2 Cursor for(SELECT   c.Name
+								  FROM  sys.columns c 
+								  INNER JOIN  sys.objects o ON o.object_id = c.object_id 
+								  WHERE  o.Name = 'Employee'
+								  AND o.type = 'U')
+Open Deleted_2
+Fetch next from Deleted_2 into @column_name
+While @@FETCH_STATUS = 0
+Begin	
+
+		insert into sc_audit.audit_table (changed_date, username, change_type,table_name, column_name, old_value)
+		values ((select CURRENT_TIMESTAMP), (select SYSTEM_USER), 'Deleted', 'sc_employee.employee', @column_name, ('zz_Q99999'))
+		
+		
+		select * into #temptable from deleted
+		set @sql = 'select convert(varchar(255), #temptable.'+ @column_name + ') as column_in into #temptable2 from #temptable
+		
+					update sc_audit.audit_table
+					set old_value = (select column_in from #temptable2)
+					where old_value = ''zz_Q99999''
+					drop table #temptable2'
+		exec(@sql)
+
+
+		Fetch next from Deleted_2 into @column_name
+	
+		drop table #temptable
+
+End
+
+Close Deleted_2
+DEALLOCATE Deleted_2 
+--------------------------------------------------------------------------------------------
+end 
+
+-- create update trigger
+drop trigger if exists sc_employee.tr_employee_update
+create trigger tr_employee_update
+on sc_employee.employee
+after update
+as 
+begin
+--------------------------------------------------------------------------------------------
+Declare @column_name varchar(255)
+Declare @sql_del varchar(1000)
+Declare @sql_ins varchar(1000)
+Declare @new_value varchar(255) 
+Declare Updated_2 Cursor for(SELECT   c.Name
+								  FROM  sys.columns c 
+								  INNER JOIN  sys.objects o ON o.object_id = c.object_id 
+								  WHERE  o.Name = 'Employee'
+								  AND o.type = 'U')
+Open Updated_2
+Fetch next from Updated_2 into @column_name
+While @@FETCH_STATUS = 0
+Begin	
+
+		insert into sc_audit.audit_table (changed_date, username, change_type,table_name, column_name, old_value, new_value)
+		values ((select CURRENT_TIMESTAMP), (select SYSTEM_USER), 'Updated', 'sc_employee.employee', @column_name, ('zz_Q99999'), ('zz_Q99999'))
+		
+		
+		select * into #temptable_del from deleted
+		set @sql_del = 'select convert(varchar(255), #temptable_del.'+ @column_name + ') as column_in into #temptable2_del from #temptable_del
+		
+					update sc_audit.audit_table
+					set old_value = (select column_in from #temptable2_del)
+					where old_value = ''zz_Q99999''
+					drop table #temptable2_del'
+		exec(@sql_del)
+
+		select * into #temptable_ins from inserted
+		set @sql_ins = 'select convert(varchar(255), #temptable_ins.'+ @column_name + ') as column_in into #temptable2_ins from #temptable_ins
+		
+					update sc_audit.audit_table
+					set new_value = (select column_in from #temptable2_ins)
+					where new_value = ''zz_Q99999''
+					drop table #temptable2_ins'
+		exec(@sql_ins)
+
+
+		Fetch next from Updated_2 into @column_name
+	
+		drop table #temptable_del
+		drop table #temptable_ins
+
+
+		delete from sc_audit.audit_table
+		where change_type = 'Updated'
+		and old_value = new_value
+End
+
+Close Updated_2
+DEALLOCATE Updated_2 
+--------------------------------------------------------------------------------------------
+end 
+
